@@ -1,0 +1,104 @@
+
+
+#include <iostream>
+#include <cuda_runtime.h>
+#include <bits/stdc++.h>
+#include <chrono>
+
+using namespace std;
+using namespace std::chrono;
+
+// Serial vector addition
+void serialVectorAdd(const float* a, const float* b, float* c, int size)
+{
+    for (int i = 0; i < size; ++i) {
+        c[i] = a[i] + b[i];
+    }
+}
+
+// Parallel vector addition using CUDA
+__global__ void parallelVectorAdd(const float* a, const float* b, float* c, int size)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size)
+        c[idx] = a[idx] + b[idx];
+}
+
+int main()
+{
+    int size = 1000000; 
+    size_t bytes = size * sizeof(float);
+
+    // Allocate memory for host arrays
+    float* h_a = new float[size];
+    float* h_b = new float[size];
+    float* h_c_serial = new float[size];
+    float* h_c_parallel = new float[size];
+
+    // Generate random numbers for input arrays
+    for (int i = 0; i < size; ++i) {
+        h_a[i] = rand() % 1000;
+        h_b[i] = rand() % 1000;
+    }
+
+    // Serial vector addition
+    auto serialStartTime = high_resolution_clock::now();
+    serialVectorAdd(h_a, h_b, h_c_serial, size);
+    auto serialEndTime = high_resolution_clock::now();
+    auto serialDuration = duration_cast<nanoseconds>(serialEndTime - serialStartTime);
+
+    // Allocate memory for device arrays
+    float* d_a, * d_b, * d_c;
+    cudaMalloc((void**)&d_a, bytes);
+    cudaMalloc((void**)&d_b, bytes);
+    cudaMalloc((void**)&d_c, bytes);
+
+    // Copy input arrays from host to device
+    cudaMemcpy(d_a, h_a, bytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, h_b, bytes, cudaMemcpyHostToDevice);
+
+    int threadsPerBlock = 256;
+    int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
+
+    // Parallel vector addition
+    auto parallelStartTime = high_resolution_clock::now();
+    parallelVectorAdd<<<blocksPerGrid, threadsPerBlock>>>(d_a, d_b, d_c, size);
+    auto parallelEndTime = high_resolution_clock::now();
+    auto parallelDuration = duration_cast<nanoseconds>(parallelEndTime - parallelStartTime);
+
+    // Copy the result array from device to host
+    cudaMemcpy(h_c_parallel, d_c, bytes, cudaMemcpyDeviceToHost);
+
+    // Print the vectors
+    cout << "Input Vectors:" << endl;
+    for (int i = 0; i < 10; ++i) {
+        cout << "a[" << i << "] = " << h_a[i] << ", b[" << i << "] = " << h_b[i] << endl;
+    }
+    cout << endl;
+
+    cout << "Serial Vector Addition Result:" << endl;
+    for (int i = 0; i < 10; ++i) {
+        cout << "c_serial[" << i << "] = " << h_c_serial[i] << endl;
+    }
+    cout << endl;
+
+    cout << "Parallel Vector Addition Result:" << endl;
+    for (int i = 0; i < 10; ++i) {
+        cout << "c_parallel[" << i << "] = " <<h_c_parallel[i] << endl;
+    }
+    cout << endl;
+    // Print execution time
+    cout << "Serial Execution Time: " << serialDuration.count() << " milliseconds" << endl;
+    cout << "Parallel Execution Time: " << parallelDuration.count() << " milliseconds" << endl;
+
+    // Clean up allocated memory
+    delete[] h_a;
+    delete[] h_b;
+    delete[] h_c_serial;
+    delete[] h_c_parallel;
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_c);
+
+    return 0;
+}
